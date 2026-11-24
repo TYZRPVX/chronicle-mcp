@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from chronicle_mcp.core._connection import with_connection
+from chronicle_mcp.core.exceptions import WritesDisabledError
 from chronicle_mcp.core.validation import (
     validate_browser,
     validate_fuzzy_threshold,
@@ -139,6 +140,9 @@ class DedupService:
         Returns:
             Dictionary with deletion results or preview
         """
+        if confirm:
+            raise WritesDisabledError()
+
         browser_lower = validate_browser(browser)
         valid_strategies = ["most_visits", "most_recent", "first"]
         if keep_strategy not in valid_strategies:

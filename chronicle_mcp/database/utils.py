@@ -3,32 +3,16 @@
 from difflib import SequenceMatcher
 from urllib.parse import unquote, urlparse
 
+from chronicle_mcp.config import load_config
+
 
 def sanitize_url(url: str) -> str:
     """Removes sensitive query parameters from URLs."""
+    config = load_config().security
+    if not config.sanitize_urls:
+        return url
     parsed = urlparse(url)
-    sensitive_params = {
-        "token",
-        "session",
-        "key",
-        "password",
-        "auth",
-        "sid",
-        "access_token",
-        "api_key",
-        "apikey",
-        "api-secret",
-        "secret",
-        "api_token",
-        "apitoken",
-        "bearer",
-        "jwt",
-        "csrf",
-        "xsrf",
-        "nonce",
-        "salt",
-        "hash",
-    }
+    sensitive_params = {param.lower() for param in config.sensitive_params}
 
     query_parts = []
     for part in parsed.query.split("&"):

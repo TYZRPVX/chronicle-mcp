@@ -161,7 +161,7 @@ class SubscriptionManager:
                 self._stats.last_event_time = datetime.utcnow().isoformat()
 
             except Exception as e:
-                logger.warning(f"Failed to deliver event to subscription {subscription.id}: {e}")
+                logger.warning("Subscription delivery failed (%s)", type(e).__name__)
 
         return sent_count
 

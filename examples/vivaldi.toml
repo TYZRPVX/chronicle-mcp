@@ -1,0 +1,6 @@
+[default]
+browser = "vivaldi"
+log_level = "WARNING"
+
+[security]
+sanitize_urls = false

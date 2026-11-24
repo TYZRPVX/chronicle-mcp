@@ -290,7 +290,8 @@ class TestGetEnvOverride:
         monkeypatch.setenv("CHRONICLE_LIMIT", "not_a_number")
         result = get_env_override("limit", 5, int)
         assert result == 5  # Should return default
-        assert "Failed to convert" in caplog.text
+        assert "Invalid configuration override" in caplog.text
+        assert "not_a_number" not in caplog.text
 
 
 class TestApplyEnvOverrides:

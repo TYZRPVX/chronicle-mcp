@@ -83,8 +83,8 @@ def mcp_command(ctx: click.Context, sse: bool, host: str, port: int) -> None:
     else:
         from chronicle_mcp.protocols.mcp import mcp
 
-        click.echo("Starting ChronicleMCP MCP server (stdio)...")
-        mcp.run()
+        click.echo("Starting ChronicleMCP MCP server (stdio)...", err=True)
+        mcp.run(transport="stdio", show_banner=False)
 
 
 @cli.command("http")  # type: ignore[untyped-decorator]

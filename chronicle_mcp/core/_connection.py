@@ -69,8 +69,8 @@ def with_connection(browser: str, operation: Callable[..., Any]) -> Any:
     except ConnPermissionDeniedError:
         raise PermissionDeniedError(browser, "")
     except ConnConnectionError as e:
-        logger.error(f"Connection error: {e.message}")
-        raise DatabaseError(f"Failed to access {browser} history: {e.message}")
+        logger.error("Connection error (%s)", type(e).__name__)
+        raise DatabaseError("Failed to access browser history") from e
     except Exception as e:
-        logger.exception("Unexpected database error")
-        raise DatabaseError(f"Database operation failed: {e}")
+        logger.error("Database operation failed (%s)", type(e).__name__)
+        raise DatabaseError("Database operation failed") from e

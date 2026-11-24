@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from chronicle_mcp.core._connection import with_connection
-from chronicle_mcp.core.exceptions import BrowserNotFoundError
+from chronicle_mcp.core.exceptions import BrowserNotFoundError, WritesDisabledError
 from chronicle_mcp.core.formatters import (
     format_delete_preview,
     format_delete_result,
@@ -47,6 +47,9 @@ def delete_history(
     Returns:
         Dictionary with deletion info and formatted message
     """
+    if confirm:
+        raise WritesDisabledError()
+
     browser_lower = validate_browser(browser)
     query_clean = validate_query(query)
     limit_val = validate_limit(limit, 1, 500)
@@ -93,6 +96,9 @@ def sync_history(
     Returns:
         Dictionary with sync info and formatted message
     """
+    if not dry_run:
+        raise WritesDisabledError()
+
     source = validate_browser(source_browser)
     target = validate_browser(target_browser)
     validate_browsers_different(source, target)

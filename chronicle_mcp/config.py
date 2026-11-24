@@ -176,7 +176,7 @@ def load_config(config_path: str | None = None) -> Config:
             return config
 
     if config_path is None:
-        logger.warning("No config file path provided")
+        _config_cache[cache_key] = config
         return config
 
     try:
@@ -232,9 +232,9 @@ def load_config(config_path: str | None = None) -> Config:
             if "max_query_limit" in advanced_section:
                 config.advanced.max_query_limit = advanced_section["max_query_limit"]
 
-        logger.info(f"Loaded configuration from {config_path}")
+        logger.info("Configuration loaded")
     except Exception as e:
-        logger.warning(f"Failed to load config from {config_path}: {e}")
+        logger.warning("Configuration load failed (%s)", type(e).__name__)
 
     _config_cache[cache_key] = config
     return config
@@ -259,7 +259,7 @@ def get_env_override(key: str, default: Any = None, type_: type = str) -> Any:
     try:
         return type_(value)
     except (ValueError, TypeError):
-        logger.warning(f"Failed to convert {env_key}='{value}' to {type_.__name__}")
+        logger.warning("Invalid configuration override for %s", env_key)
         return default
 
 
@@ -350,5 +350,9 @@ def setup_logging(level: str | None = None) -> None:
         if config.logging.json_format:
             file_handler.setFormatter(JSONFormatter())
         logging.getLogger().addHandler(file_handler)
+
+    # Protocol/HTTP debug records can contain full tool arguments or URLs.
+    for name in ("mcp", "fastmcp", "httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
     logger.debug("Logging initialized")

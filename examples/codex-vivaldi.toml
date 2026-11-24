@@ -1,0 +1,12 @@
+# Merge this section into your Codex config; this file is only an example.
+# Replace absolute paths if the checkout moves.
+[mcp_servers.chronicle]
+command = "/Users/x/workspace/oss/forks/chronicle-mcp/.venv/bin/python"
+args = ["-m", "chronicle_mcp", "mcp"]
+cwd = "/Users/x/workspace/oss/forks/chronicle-mcp"
+startup_timeout_sec = 20
+
+[mcp_servers.chronicle.env]
+CHRONICLE_CONFIG = "/Users/x/workspace/oss/forks/chronicle-mcp/examples/vivaldi.toml"
+CHRONICLE_BROWSER = "vivaldi"
+FASTMCP_CHECK_FOR_UPDATES = "off"

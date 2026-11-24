@@ -38,10 +38,15 @@ def query_history(
     timestamp_col = cols["timestamp_col"]
 
     cursor = conn.cursor()
-    search_query = f"%{query}%"
+    terms = query.split()
+    if not terms:
+        return []
+    conditions = " AND ".join(f"({title_col} LIKE ? OR {url_col} LIKE ?)" for _ in terms)
+    parameters = [value for term in terms for value in (f"%{term}%", f"%{term}%")]
     cursor.execute(
-        f"SELECT {title_col}, {url_col}, {timestamp_col} FROM {table} WHERE {title_col} LIKE ? OR {url_col} LIKE ? ORDER BY {timestamp_col} DESC LIMIT ?",
-        (search_query, search_query, limit),
+        f"SELECT {title_col}, {url_col}, {timestamp_col} FROM {table} "
+        f"WHERE {conditions} ORDER BY {timestamp_col} DESC LIMIT ?",
+        (*parameters, limit),
     )
     results = cursor.fetchall()
 

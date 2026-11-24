@@ -99,3 +99,13 @@ class UnexpectedError(ServiceError):
 
     def __init__(self, message: str = "An unexpected error occurred"):
         super().__init__(message, code="UNEXPECTED_ERROR")
+
+
+class WritesDisabledError(ServiceError):
+    """Actual browser writes are disabled until their semantics are repaired."""
+
+    def __init__(self):
+        super().__init__(
+            "Browser history writes are disabled; use preview or dry_run instead.",
+            code="WRITES_DISABLED",
+        )

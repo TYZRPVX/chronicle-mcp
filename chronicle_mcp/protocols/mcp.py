@@ -5,6 +5,7 @@ All business logic is delegated to the HistoryService in the core layer.
 """
 
 import functools
+import inspect
 import json
 import logging
 import time
@@ -14,7 +15,7 @@ from typing import Any, Literal, TypedDict, TypeVar
 
 from fastmcp import FastMCP
 
-from chronicle_mcp.config import setup_logging
+from chronicle_mcp.config import apply_env_overrides, load_config, setup_logging
 from chronicle_mcp.core import (
     BrowserNotFoundError,
     DatabaseError,
@@ -188,7 +189,7 @@ def get_error_code(error: Exception) -> str:
     elif isinstance(error, DatabaseError):
         return "DATABASE_ERROR"
     elif isinstance(error, ServiceError):
-        return "SERVICE_ERROR"
+        return error.code
     else:
         return "INTERNAL_ERROR"
 
@@ -231,7 +232,9 @@ def handle_service_error(error: Exception, correlation_id: str | None = None) ->
 
     error_dict: MCPError = {
         "code": error_code,
-        "message": error.message if hasattr(error, "message") else str(error),
+        "message": error.message
+        if isinstance(error, ServiceError)
+        else "An unexpected error occurred",
         "suggestion": suggestion,
         "correlation_id": correlation_id,
     }
@@ -262,12 +265,17 @@ def mcp_tool(func: T) -> T:
     - Standardized response envelope
     """
 
+    signature = inspect.signature(func)
+
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> str:
         correlation_id = str(uuid.uuid4())[:8]
         start_time = time.monotonic()
         try:
-            result = func(*args, **kwargs)
+            bound = signature.bind(*args, **kwargs)
+            if "browser" in signature.parameters and bound.arguments.get("browser") is None:
+                bound.arguments["browser"] = apply_env_overrides(load_config()).default_browser
+            result = func(*bound.args, **bound.kwargs)
             execution_ms = int((time.monotonic() - start_time) * 1000)
 
             meta: MCPMeta = {
@@ -275,6 +283,11 @@ def mcp_tool(func: T) -> T:
                 "correlation_id": correlation_id,
                 "execution_ms": execution_ms,
             }
+
+            if "browser" in bound.arguments:
+                meta["browser"] = bound.arguments["browser"]
+            if func.__name__ == "search_history":
+                meta["sanitized"] = load_config().security.sanitize_urls
 
             if isinstance(result, dict):
                 response: MCPResponse = {
@@ -321,13 +334,15 @@ def list_available_browsers() -> str:
 def search_history(
     query: str,
     limit: int = 5,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Search browser history by keyword to find specific pages visited.
 
     Use this tool when the user wants to find pages matching a specific topic,
-    keyword in title, or substring in URL.
+    keyword in title, or substring in URL. Start with this tool to recover a URL
+    the user remembers. Whitespace-separated terms must all match, each in
+    either title or URL (e.g. "live config" matches "Live Configuration").
 
     Distinguishes from similar tools:
     - search_history_by_date: Use when date range is needed
@@ -344,7 +359,7 @@ def search_history(
         query: Keywords to search (case-insensitive partial match).
             Avoid single characters ("a") as they match too many results.
         limit: Maximum number of results to return (1-100, default: 5)
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
         format_type: "markdown" for readable text, "json" for structured data
 
     Returns:
@@ -360,7 +375,7 @@ def search_history(
 def get_recent_history(
     hours: int = 24,
     limit: int = 20,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Get recent browsing history from the last N hours.
@@ -376,7 +391,7 @@ def get_recent_history(
     Args:
         hours: Number of hours to look back (1-8760, default: 24). Use 1 for last hour, 168 for last week.
         limit: Maximum number of results (1-100, default: 20)
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
         format_type: "markdown" for readable text, "json" for structured data
 
     Returns:
@@ -389,7 +404,7 @@ def get_recent_history(
 
 
 @mcp_tool
-def count_visits(domain: str, browser: BrowserType = "chrome") -> str:
+def count_visits(domain: str, browser: BrowserType | None = None) -> str:
     """Count total visits to a specific domain.
 
     Use this tool to get exact visit counts for a domain, useful for analytics
@@ -398,7 +413,7 @@ def count_visits(domain: str, browser: BrowserType = "chrome") -> str:
     Args:
         domain: Domain to count (e.g., 'github.com', 'stackoverflow.com').
             Do not include protocol (http/https) or path.
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
 
     Returns:
         JSON envelope with success status, data with domain visit count
@@ -410,7 +425,7 @@ def count_visits(domain: str, browser: BrowserType = "chrome") -> str:
 @mcp_tool
 def list_top_domains(
     limit: int = 10,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Get most visited domains from browser history.
@@ -425,7 +440,7 @@ def list_top_domains(
 
     Args:
         limit: Maximum number of domains to return (1-50, default: 10)
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
         format_type: "markdown" for readable text, "json" for structured data
 
     Returns:
@@ -441,7 +456,7 @@ def search_history_by_date(
     start_date: str,
     end_date: str,
     limit: int = 10,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Search browser history within a specific date range.
@@ -459,7 +474,7 @@ def search_history_by_date(
         start_date: Start date in ISO format (YYYY-MM-DD), inclusive
         end_date: End date in ISO format (YYYY-MM-DD), inclusive
         limit: Maximum number of results (1-100, default: 10)
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
         format_type: "markdown" for readable text, "json" for structured data
 
     Returns:
@@ -480,24 +495,21 @@ def search_history_by_date(
 def delete_history(
     query: str,
     limit: int = 100,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     confirm: bool = False,
 ) -> str:
-    """Delete history entries matching a query.
+    """Preview history entries matching a query.
 
-    DANGER: This permanently deletes browser history. Use confirm=True to actually delete.
-
-    By default (confirm=False), returns a preview of how many entries would be deleted
-    without actually deleting them.
+    Actual writes are disabled in this build; confirm=True returns WRITES_DISABLED.
 
     Args:
-        query: Search term to match for deletion (case-insensitive)
-        limit: Maximum number of entries to delete (1-500, default: 100)
-        browser: Browser to delete from - case insensitive
-        confirm: Must be True to actually delete. False returns preview only.
+        query: Keywords to match in title or URL.
+        limit: Maximum preview results (1-500).
+        browser: Browser to search; omitted uses configured default.
+        confirm: Keep False for a read-only preview.
 
     Returns:
-        JSON envelope with success status, preview/delete count in data
+        JSON envelope with preview results or a WRITES_DISABLED error.
     """
     result = HistoryService.delete_history(
         query=query, limit=limit, browser=browser, confirm=confirm
@@ -510,7 +522,7 @@ def search_by_domain(
     domain: str,
     query: str | None = None,
     limit: int = 20,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
     exclude_domains: list[str] | None = None,
 ) -> str:
@@ -529,7 +541,7 @@ def search_by_domain(
             Do not include protocol or path.
         query: Optional search term to filter within the domain
         limit: Maximum number of results (1-100, default: 20)
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
         format_type: "markdown" for readable text, "json" for structured data
         exclude_domains: List of domains to exclude from results
 
@@ -548,7 +560,7 @@ def search_by_domain(
 
 
 @mcp_tool
-def get_browser_stats(browser: BrowserType = "chrome") -> str:
+def get_browser_stats(browser: BrowserType | None = None) -> str:
     """Get browsing statistics for a browser database.
 
     Use this tool to get an overview of the browser's history database:
@@ -567,7 +579,7 @@ def get_browser_stats(browser: BrowserType = "chrome") -> str:
 @mcp_tool
 def get_most_visited_pages(
     limit: int = 20,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Get most visited individual pages from browser history.
@@ -581,7 +593,7 @@ def get_most_visited_pages(
 
     Args:
         limit: Maximum number of pages to return (1-100, default: 20)
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
         format_type: "markdown" for readable text, "json" for structured data
 
     Returns:
@@ -598,7 +610,7 @@ def export_history(
     format_type: Literal["csv", "json"] = "csv",
     limit: int = 1000,
     query: str | None = None,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
 ) -> str:
     """Export browser history to CSV or JSON format.
 
@@ -624,7 +636,7 @@ def export_history(
 def search_history_advanced(
     query: str,
     limit: int = 20,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
     exclude_domains: list[str] | None = None,
     sort_by: SortOrder = "date",
@@ -650,7 +662,7 @@ def search_history_advanced(
     Args:
         query: Keywords to search, or regex pattern if use_regex=True
         limit: Maximum number of results (1-100, default: 20)
-        browser: Browser to search - case insensitive
+        browser: Browser to search; omitted uses configured default (case insensitive)
         format_type: "markdown" for readable text, "json" for structured data
         exclude_domains: List of domains to exclude from results
         sort_by: How to sort results - "date" (default), "visit_count", or "title"
@@ -682,26 +694,18 @@ def sync_history(
     merge_strategy: MergeStrategy = "latest",
     dry_run: bool = True,
 ) -> str:
-    """Sync/copy browser history between browsers.
+    """Preview copying history between browsers.
 
-    Use this tool to migrate history from one browser to another.
-    By default (dry_run=True), shows what would be done without making changes.
-
-    Distinguishes from similar tools:
-    - export_history: Export to file, not to another browser
-    - delete_history: Removes entries, doesn't copy
+    Actual writes are disabled in this build; dry_run=False returns WRITES_DISABLED.
 
     Args:
-        source_browser: Browser to copy history FROM
-        target_browser: Browser to copy history TO
-        merge_strategy: How to handle duplicates:
-            - "latest": Keep most recently visited (default)
-            - "combine": Keep all visits from both
-            - "dedupe": Remove exact duplicates
-        dry_run: If True, preview changes without applying them (default: True)
+        source_browser: Browser to read history from.
+        target_browser: Intended target browser (never modified).
+        merge_strategy: Existing preview strategy: latest, combine, or dedupe.
+        dry_run: Keep True for a read-only preview.
 
     Returns:
-        JSON envelope with success status, data about sync operation, and metadata
+        JSON envelope with sync preview or a WRITES_DISABLED error.
     """
     result = HistoryService.sync_history(
         source_browser=source_browser,
@@ -744,7 +748,7 @@ def list_available_downloads() -> str:
 def get_bookmarks(
     query: str | None = None,
     limit: int = 50,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Get bookmarks from a browser.
@@ -777,7 +781,7 @@ def get_bookmarks(
 def get_downloads(
     query: str | None = None,
     limit: int = 50,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Get downloads history from a browser.
@@ -812,7 +816,7 @@ def compare_time_periods(
     end_date1: str,
     start_date2: str,
     end_date2: str,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
 ) -> str:
     """Compare browsing statistics between two time periods.
 
@@ -847,7 +851,7 @@ def compare_time_periods(
 def analyze_productivity(
     start_date: str | None = None,
     end_date: str | None = None,
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
 ) -> str:
     """Analyze browsing productivity and generate recommendations.
 
@@ -878,7 +882,7 @@ def analyze_productivity(
 
 @mcp_tool
 def suggest_categories(
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     limit: int = 20,
 ) -> str:
     """Suggest categories for uncategorized URLs in browsing history.
@@ -904,7 +908,7 @@ def suggest_categories(
 def export_visualization(
     format_type: Literal["chart_json", "csv"] = "chart_json",
     period: PeriodType = "month",
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
 ) -> str:
     """Export browsing data formatted for visualization (Chart.js compatible).
 
@@ -934,7 +938,7 @@ def export_visualization(
 @mcp_tool
 def generate_insights_report(
     period: PeriodType = "week",
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     format_type: FormatType = "markdown",
 ) -> str:
     """Generate comprehensive browsing insights report.
@@ -969,7 +973,7 @@ def generate_insights_report(
 
 @mcp_tool
 def subscribe_to_history(
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     event_types: list[EventType] | None = None,
 ) -> str:
     """Subscribe to real-time history changes for a browser.
@@ -1044,7 +1048,7 @@ def get_subscription_status(subscription_id: str | None = None) -> str:
 
 @mcp_tool
 def find_duplicate_history(
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     similarity_threshold: float = 0.9,
     limit: int = 100,
 ) -> str:
@@ -1077,31 +1081,23 @@ def find_duplicate_history(
 
 @mcp_tool
 def delete_duplicate_history(
-    browser: BrowserType = "chrome",
+    browser: BrowserType | None = None,
     similarity_threshold: float = 0.9,
     keep_strategy: KeepStrategy = "most_visits",
     confirm: bool = False,
 ) -> str:
-    """Delete duplicate history entries.
+    """Preview duplicate history entries.
 
-    DANGER: This permanently deletes duplicate history entries. Use confirm=True to actually delete.
-
-    By default (confirm=False), returns a preview of how many entries would be deleted
-    without actually deleting them.
-
-    Distinguishes from similar tools:
-    - find_duplicate_history: Just identifies duplicates, doesn't delete
-    - delete_history: Deletes based on search query, not similarity
+    Actual writes are disabled in this build; confirm=True returns WRITES_DISABLED.
 
     Args:
-        browser: Browser to clean - case insensitive
-        similarity_threshold: URL similarity threshold (0.0-1.0, default: 0.9).
-            Higher values = more strict matching.
-        keep_strategy: Which entry to keep - "most_visits" (default), "most_recent", or "first"
-        confirm: Must be True to actually delete. False returns preview only.
+        browser: Browser to search; omitted uses configured default.
+        similarity_threshold: URL similarity threshold (0.0-1.0).
+        keep_strategy: Intended strategy: most_visits, most_recent, or first.
+        confirm: Keep False for a read-only preview.
 
     Returns:
-        JSON envelope with success status, data.preview/delete info, and metadata
+        JSON envelope with duplicate preview or a WRITES_DISABLED error.
     """
     result = HistoryService.delete_duplicates(
         browser=browser,

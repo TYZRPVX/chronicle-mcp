@@ -124,7 +124,7 @@ class WebhookManager:
                     return False
         except Exception as e:
             webhook.failure_count += 1
-            logger.error(f"Webhook {webhook.id} error: {e}")
+            logger.error("Webhook delivery failed (%s)", type(e).__name__)
             return False
 
     async def _worker(self) -> None:
@@ -137,7 +137,7 @@ class WebhookManager:
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
-                logger.error(f"Webhook worker error: {e}")
+                logger.error("Webhook worker failed (%s)", type(e).__name__)
 
     def start(self) -> None:
         if not self._running:

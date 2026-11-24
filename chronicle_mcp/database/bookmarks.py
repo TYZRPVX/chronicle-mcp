@@ -192,7 +192,9 @@ def query_bookmarks(
                 return []
             bookmark_path = matches[0]
 
-        conn = sqlite3.connect(bookmark_path)
+        from chronicle_mcp.connection import open_readonly_database
+
+        conn = open_readonly_database(bookmark_path)
         try:
             return query_bookmarks_firefox(conn, query, limit)
         finally:
@@ -235,7 +237,9 @@ def query_downloads(
         download_path = matches[0]
 
     try:
-        conn = sqlite3.connect(download_path)
+        from chronicle_mcp.connection import open_readonly_database
+
+        conn = open_readonly_database(download_path)
         try:
             detected_schema = detect_schema(conn)
             if detected_schema == "firefox" or schema == "firefox":

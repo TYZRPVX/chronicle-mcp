@@ -70,7 +70,7 @@ def search_history(
     limit_val = validate_limit(limit, 1, 100)
     format_clean = validate_format_type(format_type)
 
-    logger.info(f"Searching history for '{query_clean}' in {browser_lower} (limit={limit_val})")
+    logger.info("Searching history (limit=%d)", limit_val)
 
     rows = _with_connection(browser_lower, lambda conn: query_history(conn, query_clean, limit_val))
 

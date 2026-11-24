@@ -149,7 +149,7 @@ def handle_service_error(e: Exception) -> JSONResponse:
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.exception("Unexpected error in HTTP endpoint")
+        logger.error("HTTP endpoint failed (%s)", type(e).__name__)
         return error_response("An unexpected error occurred", 500)
 
 

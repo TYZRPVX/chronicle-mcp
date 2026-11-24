@@ -1,0 +1,23 @@
+{
+  "database_bytes": 140795904,
+  "rows": 240000,
+  "samples_per_mode": 30,
+  "note": "First means first invocation, not cold OS cache; data was just generated. No model latency measured.",
+  "milliseconds": {
+    "original_copy_phrase": {
+      "first": 175.51,
+      "median": 156.44,
+      "p95": 178.35
+    },
+    "readonly_phrase": {
+      "first": 122.89,
+      "median": 122.01,
+      "p95": 126.69
+    },
+    "readonly_terms": {
+      "first": 127.24,
+      "median": 122.15,
+      "p95": 128.2
+    }
+  }
+}
